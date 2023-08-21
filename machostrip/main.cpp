@@ -15,18 +15,31 @@ using namespace LIEF::MachO;
 
 int main(int argc, const char *argv[]) {
   if (argc < 3) {
-    std::cout << "Usage: machostrip [mach-o file] [output file]" << std::endl;
+    std::cout << "Usage: machostrip [-strip-ext](optional) [mach-o file] "
+                 "[output file]"
+              << std::endl;
     return 1;
   }
 
-  std::unique_ptr<FatBinary> Binaries = Parser::parse(argv[1]);
+  bool stripext = false;
+  int fileargvindex = 1;
+  int outputargvindex = 2;
+
+  if (!strcmp(argv[1], "-strip-ext")) {
+    stripext = true;
+    fileargvindex++;
+    outputargvindex++;
+  }
+
+  std::unique_ptr<FatBinary> Binaries = Parser::parse(argv[fileargvindex]);
   for (Binary &Bin : *Binaries) {
     // remove function starts
     Bin.function_starts()->functions({});
-    // remove local symbols
+    // remove local and external symbols
     std::vector<Symbol *> symtoremove;
     for (Symbol &Sym : Bin.symbols()) {
-      if (Sym.category() == Symbol::CATEGORY::LOCAL)
+      if (Sym.category() == Symbol::CATEGORY::LOCAL ||
+          (stripext && Sym.category() == Symbol::CATEGORY::EXTERNAL))
         symtoremove.emplace_back(&Sym);
     }
     for (Symbol *Sym : symtoremove)
@@ -53,7 +66,7 @@ int main(int argc, const char *argv[]) {
     Bin.add_exported_function(
         0, "(c) 2014 - Cryptic Apps SARL - Disassembling not allowed.");
   }
-  const std::string output_name = argv[2];
+  const std::string output_name = argv[outputargvindex];
   Binaries->write(output_name);
 
   // obfuscate symbol stub name

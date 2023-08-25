@@ -15,12 +15,13 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <cstring>
 
 using namespace LIEF::MachO;
 
 const std::string FUNC_NAME_PATTERN = "(c) 2014 - Cryptic Apps SARL - Disassembling not allowed.";
 
-static void removeSymbols(Binary& bin, bool stripext, bool stripindirect) {
+static void removeSymbols(Binary& bin, bool stripext, bool stripindirect, bool optimize) {
     std::vector<Symbol*> symtoremove;
     for (Symbol& sym : bin.symbols()) {
         if (sym.category() == Symbol::CATEGORY::LOCAL ||
@@ -30,6 +31,8 @@ static void removeSymbols(Binary& bin, bool stripext, bool stripindirect) {
             symtoremove.push_back(&sym);
         }
     }
+
+
     for (Symbol* sym : symtoremove) {
         bin.remove(*sym);
     }
@@ -50,38 +53,63 @@ static void updateSectionNames(SegmentCommand& seg) {
     }
 }
 
+static void optimizeSectionsAlignment(SegmentCommand& seg, int alignment) {
+    for (Section& section : seg.sections()) {
+        // Optimize section alignment
+        section.alignment(alignment);
+        // For iOS on the ARM64 architecture (AArch64), it is usually recommended to use an alignment of 16 bytes (128 bits), since this corresponds to the size of the vector register (128 bits), which is often used for floating-point operations and other calculations. It can also improve performance, as it conforms to architectural features.
+    }
+}
+
+
+
 int main(int argc, const char* argv[]) {
-    if (argc < 3) {
-        std::cout << "Usage: machostrip [-strip-ext](optional) [-strip-indirect](optional) [mach-o file] [output file]" << std::endl;
-        return 1;
-    }
+    if (argc < 4) {
+            std::cout << "Usage: machostrip [-strip-ext](optional) [-strip-indirect](optional) [--optimize alignment](optional) [mach-o file] [output file]" << std::endl;
+            return 1;
+        }
 
-    bool stripext = false;
-    bool stripindirect = false;
-    int fileargvindex = 1;
-    int outputargvindex = 2;
+        bool stripext = false;
+        bool stripindirect = false;
+        bool useoptimize = false;
+        int fileargvindex = 1;
+        int outputargvindex = 2;
+        int opt_value = -1;
 
-    if (!strcmp(argv[1], "-strip-ext")) {
-        stripext = true;
-        fileargvindex++;
-        outputargvindex++;
-    }
-
-    if (!strcmp(argv[2], "-strip-indirect")) {
-        stripindirect = true;
-        fileargvindex++;
-        outputargvindex++;
-    }
-
+        for (int i = 1; i < argc; ++i) {
+            if (!strcmp(argv[i], "-strip-ext")) {
+                stripext = true;
+                fileargvindex++;
+                outputargvindex++;
+            } else if (!strcmp(argv[i], "-strip-indirect")) {
+                stripindirect = true;
+                fileargvindex++;
+                outputargvindex++;
+            } else if (!strcmp(argv[i], "--optimize")) {
+                useoptimize = true;
+                if (i + 1 < argc) {
+                    opt_value = std::atoi(argv[i + 1]);
+                } else {
+                    std::cerr << "Error: Missing argument for --optimize" << std::endl;
+                    return 1;
+                }
+                fileargvindex += 2;
+                outputargvindex += 2;
+            }
+        }
+    
     try {
         std::unique_ptr<FatBinary> inputBinaries = Parser::parse(argv[fileargvindex]);
+        
         for (Binary& bin : *inputBinaries) {
             bin.function_starts()->functions({});
-            removeSymbols(bin, stripext, stripindirect);
             
             for (SegmentCommand& seg : bin.segments()) {
                 if (seg.name() == "__TEXT"  || seg.name() == "__DATA"  || seg.name() == "__DATA__CONST") {
                     updateSectionNames(seg);
+                    if (useoptimize) {
+                        optimizeSectionsAlignment(seg, *argv[opt_value]);
+                    }
                 }
             }
             bin.add_exported_function(0, FUNC_NAME_PATTERN);
@@ -130,4 +158,3 @@ int main(int argc, const char* argv[]) {
             return 1;
         }
     }
-

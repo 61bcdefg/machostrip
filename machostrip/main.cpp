@@ -4,6 +4,7 @@
 //  Created by 123456qwerty on 2023/8/11.
 //
 
+
 #include "LIEF/LIEF.hpp"
 #include <fstream>
 #include <iostream>
@@ -14,11 +15,14 @@
 using namespace LIEF::MachO;
 
 // Function to remove unnecessary symbols
-static void removeSymbols(Binary& bin, bool stripext) {
+void removeSymbols(Binary& bin, bool stripext, bool stripinderect) {
     std::vector<Symbol*> symtoremove;
     for (Symbol& sym : bin.symbols()) {
+        std::string symName = sym.name();
         if (sym.category() == Symbol::CATEGORY::LOCAL ||
-            (stripext && sym.category() == Symbol::CATEGORY::EXTERNAL)) {
+            (stripext && sym.category() == Symbol::CATEGORY::EXTERNAL) ||
+            (stripinderect && sym.category() == Symbol::CATEGORY::INDIRECT_ABS) ||
+            (stripinderect && sym.category() == Symbol::CATEGORY::INDIRECT_LOCAL)) {
             symtoremove.push_back(&sym);
         }
     }
@@ -28,7 +32,7 @@ static void removeSymbols(Binary& bin, bool stripext) {
 }
 
 // Function to update section names
-static void updateSectionNames(SegmentCommand& seg) {
+void updateSectionNames(SegmentCommand& seg) {
     for (Section& sec : seg.sections()) {
         std::string secName = sec.name();
         if (secName.find("__objc") == std::string::npos &&
@@ -45,11 +49,12 @@ static void updateSectionNames(SegmentCommand& seg) {
 
 int main(int argc, const char* argv[]) {
     if (argc < 3) {
-        std::cout << "Usage: machostrip [-strip-ext](optional) [mach-o file] [output file]" << std::endl;
+        std::cout << "Usage: machostrip [-strip-ext](optional) [-strip-indirect](optional) [mach-o file] [output file]" << std::endl;
         return 1;
     }
 
     bool stripext = false;
+    bool stripindirect = false;
     int fileargvindex = 1;
     int outputargvindex = 2;
 
@@ -58,12 +63,18 @@ int main(int argc, const char* argv[]) {
         fileargvindex++;
         outputargvindex++;
     }
+    
+    if (!strcmp(argv[2], "-strip-indirect")) {
+        stripindirect = true;
+        fileargvindex++;
+        outputargvindex++;
+    }
 
     // Parse input binary
     std::unique_ptr<FatBinary> inputBinaries = Parser::parse(argv[fileargvindex]);
     for (Binary& bin : *inputBinaries) {
         bin.function_starts()->functions({});
-        removeSymbols(bin, stripext);
+        removeSymbols(bin, stripext, stripindirect);
 
         for (SegmentCommand& seg : bin.segments()) {
             if (seg.name() == "__TEXT"  || seg.name() == "__DATA"  || seg.name() == "__DATA__CONST") {
@@ -103,3 +114,4 @@ int main(int argc, const char* argv[]) {
 
     return 0;
 }
+

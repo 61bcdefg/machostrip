@@ -6,7 +6,7 @@
 
 - 移除所有Function Starts
 - 移除所有local symbols和external symbols
-- 使Hopper Demo版和Ghidra无法加载文件
+- 使Hopper Demo版和Ghidra(11.0 前)无法加载文件
 - 混淆符号stub名称
  
 ## Before
